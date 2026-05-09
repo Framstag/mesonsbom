@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            meson ninja-build \
+            nlohmann-json3-dev \
+            libcxxopts-dev \
+            libpkgconf-dev \
+            catch2
+
+      - name: Build release binary
+        run: |
+          meson setup builddir --buildtype=release
+          ninja -C builddir
+
+      - name: Generate SBOM
+        run: |
+          ./builddir/mesonsbom --build-dir builddir --output sbom.json
+
+      - name: Build statically linked binary
+        run: |
+          rm -rf builddir-static
+          meson setup builddir-static --buildtype=release \
+            -Dc_link_args="-static" \
+            -Dcpp_link_args="-static"
+          ninja -C builddir-static
+          strip builddir-static/mesonsbom
+          cp builddir-static/mesonsbom mesonsbom-x86_64-static
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            mesonsbom-x86_64-static
+            sbom.json
