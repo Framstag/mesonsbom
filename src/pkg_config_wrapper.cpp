@@ -9,7 +9,6 @@ PkgConfigWrapper::PkgConfigWrapper() {
     
     if (ctx) {
         pkgconf_client_dir_list_build(ctx, personality);
-        pkgconf_client_preload_from_environ(ctx, "PKG_CONFIG_PATH");
     }
 }
 
