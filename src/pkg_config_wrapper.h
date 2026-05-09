@@ -36,6 +36,11 @@ public:
     // Returns a PackageInfo struct with available fields filled in.
     // Sets 'found' to true if the package was found via pkg-config.
     PackageInfo getPackageInfo(const std::string& pkgName, bool& found);
+
+    // Retrieve the path to the .pc file for a given package.
+    // Returns the .pc file path, or empty string if not found.
+    // Sets 'found' to true if the package was found via pkg-config.
+    std::string getPackageFilename(const std::string& pkgName, bool& found);
     
 private:
     pkgconf_client_t* ctx;

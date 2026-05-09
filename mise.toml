@@ -11,6 +11,7 @@ python  = "3.12"
 # matters across CI/CD environments.
 meson   = "latest"
 ninja   = "latest"
+node = "22"
 
 # ────────────────────────────────────────────────────────────────────────────
 [env]

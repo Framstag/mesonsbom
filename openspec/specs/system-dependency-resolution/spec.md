@@ -22,3 +22,20 @@ The system SHALL use a linked `pkg-config` library API to retrieve transitive de
 - **WHEN** a dependency is neither found in Meson subproject introspection data nor available via the `pkg-config` library.
 - **THEN** the system SHALL issue a warning to `stderr` indicating that the dependency could not be resolved.
 - **AND** the system MUST continue the resolution process for other dependencies.
+
+#### Scenario: Dependencies from pkg-config include .pc file path
+- **WHEN** a dependency is resolved via pkg-config
+- **THEN** the system SHALL record the `.pc` file path from `pkgconf_pkg_t.filename` alongside the dependency name and version
+- **AND** the `.pc` file path SHALL be used later for OS package resolution
+
+#### Scenario: Resolution via Meson bridge before pkg-config fallback
+- **WHEN** a dependency is of type `"pkgconfig"`
+- **AND** the dependency has no subproject introspection files
+- **AND** its entry in the main `intro-dependencies.json` contains a `"dependencies"` array with child names
+- **THEN** the system SHALL use those children from the `dependencies` array as the resolved transitive deps
+- **AND** the pkg-config fallback SHALL NOT be attempted for this dependency
+- **AND** self-references (a component listing itself as its own dependency) SHALL be silently skipped
+
+#### Scenario: Complete resolution order
+- **WHEN** a transitive dependency is being resolved
+- **THEN** the system SHALL check in this order: (1) subproject introspection, (2) Meson bridge from `intro-dependencies.json`, (3) pkg-config `Requires` via linked library, (4) warning if none found

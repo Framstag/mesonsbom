@@ -6,7 +6,7 @@
 - When in doubt, ask before proceeding
 - Comment the code you are changing  / writing.
   Comment the code with regard to its domain-specific logic and functionality, not its technical implementation
-- For /opsx:new wird only create directory and proposal.md erstellt.
+- For the openspec-new-change skill only create directory and proposal.md.
   Create additional artefacts only if requested.
 
 ## Code Style and Conventions
@@ -20,6 +20,7 @@
 
 ## Calling command line tools
 
+- Prefer using the read tool instead using shell commands for reading files or part of files.
 - Prefer non-interactive flags (e.g. `-y`, `--no-input`) in shell commands
 
 ## Code Processing

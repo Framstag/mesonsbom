@@ -139,11 +139,16 @@ public:
     //                     Empty string if not available.
     // @param licenses    Optional list of license identifiers (e.g., ["MIT", "Apache-2.0"]).
     //                     Empty list if not available.
+    // @param supplierName Optional supplier name (e.g., "Arch Linux").
+    // @param purlQualifier Optional purl qualifier string (e.g., "os=pacman").
+    //                      Appended as ?qualifier after version in the purl.
     bool addComponent(const std::string& name,
                       const std::string& version,
                       const std::string& type,
                       const std::string& description = "",
-                      const std::vector<std::string>& licenses = {}) {
+                      const std::vector<std::string>& licenses = {},
+                      const std::string& supplierName = "",
+                      const std::string& purlQualifier = "") {
         if (visited.count(name)) {
             return false; // already added
         }
@@ -153,11 +158,15 @@ public:
         comp["version"] = version;
         // Assign a unique bom-ref (use the component name for simplicity).
         comp["bom-ref"] = name;
-        // Add purl using the pkg:generic format
-        comp["purl"] = makePurl(name, version);
+        // Add purl using the pkg:generic format, with optional qualifier
+        comp["purl"] = makePurl(name, version, purlQualifier);
         // Add description if available
         if (!description.empty()) {
             comp["description"] = description;
+        }
+        // Add supplier if provided
+        if (!supplierName.empty()) {
+            comp["supplier"]["name"] = supplierName;
         }
         // Add licenses if available
         if (!licenses.empty()) {
@@ -170,20 +179,112 @@ public:
             comp["licenses"] = licenseArray;
         }
         components.push_back(comp);
-        // Store mapping for dependency resolution.
+        // Store mapping from component name to its index for later evidence/properties access.
+        nameToIndex_[name] = components.size() - 1;
         nameToRef[name] = name;
         visited.insert(name);
         return true;
     }
+    // @param field           The identity field ("name", "purl", etc.)
+    // @param concludedValue  The original pkg-config value for this field
+    // @param confidence      Confidence level (0.0–1.0)
+    // @param technique       Analysis technique (e.g., "manifest-analysis")
+    // @param methodValue     Description of the evidence (e.g., "pkg-config:libcurl")
+    void addEvidenceIdentity(const std::string& compName,
+                             const std::string& field,
+                             const std::string& concludedValue,
+                             double confidence,
+                             const std::string& technique,
+                             const std::string& methodValue) {
+        auto it = nameToIndex_.find(compName);
+        if (it == nameToIndex_.end()) return;
 
+        nlohmann::json& comp = components[it->second];
+
+        nlohmann::json identityEntry;
+        identityEntry["field"] = field;
+        identityEntry["confidence"] = confidence;
+        identityEntry["concludedValue"] = concludedValue;
+
+        nlohmann::json method;
+        method["technique"] = technique;
+        method["confidence"] = confidence;
+        method["value"] = methodValue;
+        identityEntry["methods"] = nlohmann::json::array({method});
+
+        identityEntry["tools"] = nlohmann::json::array({"tool-mesonsbom"});
+
+        // Ensure evidence.identity array exists.
+        if (!comp.contains("evidence")) {
+            comp["evidence"] = nlohmann::json::object();
+        }
+        if (!comp["evidence"].contains("identity")) {
+            comp["evidence"]["identity"] = nlohmann::json::array();
+        }
+        comp["evidence"]["identity"].push_back(identityEntry);
+    }
+
+    // Evidence occurrence: record a file location where the component was found.
+    void addEvidenceOccurrence(const std::string& compName,
+                               const std::string& location) {
+        auto it = nameToIndex_.find(compName);
+        if (it == nameToIndex_.end()) return;
+
+        nlohmann::json& comp = components[it->second];
+
+        nlohmann::json occurrence;
+        occurrence["location"] = location;
+
+        // Ensure evidence.occurrences array exists.
+        if (!comp.contains("evidence")) {
+            comp["evidence"] = nlohmann::json::object();
+        }
+        if (!comp["evidence"].contains("occurrences")) {
+            comp["evidence"]["occurrences"] = nlohmann::json::array();
+        }
+        comp["evidence"]["occurrences"].push_back(occurrence);
+    }
+
+    // Add a name-value property to a component.
+    void addProperty(const std::string& compName,
+                     const std::string& propName,
+                     const std::string& propValue) {
+        auto it = nameToIndex_.find(compName);
+        if (it == nameToIndex_.end()) return;
+
+        nlohmann::json& comp = components[it->second];
+
+        if (!comp.contains("properties")) {
+            comp["properties"] = nlohmann::json::array();
+        }
+
+        nlohmann::json prop;
+        prop["name"] = propName;
+        prop["value"] = propValue;
+        comp["properties"].push_back(prop);
+    }
+
+    // Add multiple name-value properties to a component in one call.
+    void addProperties(const std::string& compName,
+                       const std::vector<std::pair<std::string, std::string>>& props) {
+        for (const auto& [name, value] : props) {
+            addProperty(compName, name, value);
+        }
+    }
     // Record a dependency relationship: `from` depends on `to`.
     // Consolidates all dependencies of a single `from` component into one entry.
     void addDependency(const std::string& from, const std::string& to) {
         std::string fromRef = nameToRef.count(from) ? nameToRef[from] : from;
         std::string toRef   = nameToRef.count(to)   ? nameToRef[to]   : to;
         
-        // Consolidate: add 'to' to the list of dependencies for 'from'
-        depMap[fromRef].push_back(toRef);
+        // Check for duplicates before adding.
+        auto& deps = depMap[fromRef];
+        for (const auto& existing : deps) {
+            if (existing == toRef) {
+                return; // already recorded
+            }
+        }
+        deps.push_back(toRef);
     }
 
     // Add a tool entry to metadata.tools.components per CycloneDX 1.5+.
@@ -261,6 +362,7 @@ private:
     nlohmann::json bom;                     // top‑level BOM object
     std::vector<nlohmann::json> components; // list of component objects
     std::unordered_map<std::string, std::string> nameToRef; // map component name → bom-ref
+    std::unordered_map<std::string, size_t> nameToIndex_; // map component name → index in components vector
     std::unordered_set<std::string> visited; // set of components already added to BOM
     std::vector<ToolInfo> toolComponents_; // ordered list of tool entries
     std::unordered_map<std::string, std::vector<std::string>> depMap; // consolidated dependency map
@@ -314,12 +416,19 @@ private:
     }
 
     // Generate a purl using the pkg:generic format.
-    // Format: pkg:generic/<lowercase-name>@<version>
-    static std::string makePurl(const std::string& name, const std::string& version) {
+    // Base format: pkg:generic/<lowercase-name>@<version>
+    // With qualifier: pkg:generic/<lowercase-name>@<version>?<qualifier>
+    static std::string makePurl(const std::string& name,
+                                const std::string& version,
+                                const std::string& qualifier = "") {
         std::string lowerName;
         for (char c : name) {
             lowerName += std::tolower(static_cast<unsigned char>(c));
         }
-        return "pkg:generic/" + lowerName + "@" + version;
+        std::string purl = "pkg:generic/" + lowerName + "@" + version;
+        if (!qualifier.empty()) {
+            purl += "?" + qualifier;
+        }
+        return purl;
     }
 };

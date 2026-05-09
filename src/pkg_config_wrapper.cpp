@@ -98,3 +98,21 @@ PackageInfo PkgConfigWrapper::getPackageInfo(const std::string& pkgName, bool& f
 
     return info;
 }
+
+    std::string PkgConfigWrapper::getPackageFilename(const std::string& pkgName, bool& found) {
+    found = false;
+    if (!ctx) {
+        return "";
+    }
+
+    pkgconf_pkg_t* pkg = pkgconf_pkg_find(ctx, pkgName.c_str());
+    if (!pkg) {
+        return "";
+    }
+
+    found = true;
+    if (pkg->filename) {
+        return std::string(pkg->filename);
+    }
+    return "";
+}

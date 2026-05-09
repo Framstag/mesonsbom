@@ -9,7 +9,7 @@ catch2_dep = dependency('catch2', required : false)
 pkgconf_dep = dependency('pkgconf', required : true)
 
 # Source files
-src = files('src/main.cpp', 'src/pkg_config_wrapper.cpp')
+src = files('src/main.cpp', 'src/pkg_config_wrapper.cpp', 'src/os_release.cpp', 'src/os_package_resolver.cpp')
 
 # We add the explicit include directory for pkgconf as a fallback because
 # some distributions place the headers in /usr/include/pkgconf/
@@ -25,7 +25,7 @@ executable('mesonsbom', src,
 
 # Unit and integration tests
 test_exe = executable('mesonsbom_tests',
-  sources : files('tests/main.cpp', 'tests/test_json.cpp', 'tests/integration_test.cpp', 'tests/test_transitive_dependencies.cpp', 'tests/test_circular_dependencies.cpp', 'tests/test_pkgconf_integration.cpp', 'tests/test_uuid_generation.cpp', 'tests/test_timestamp.cpp'),
+  sources : files('tests/main.cpp', 'tests/test_json.cpp', 'tests/integration_test.cpp', 'tests/test_transitive_dependencies.cpp', 'tests/test_circular_dependencies.cpp', 'tests/test_pkgconf_integration.cpp', 'tests/test_uuid_generation.cpp', 'tests/test_timestamp.cpp', 'tests/test_os_release.cpp', 'tests/test_os_package_resolver.cpp', 'tests/test_dep_bridge.cpp', 'src/os_release.cpp', 'src/os_package_resolver.cpp'),
   dependencies : [json_dep, cxxopts_dep, catch2_dep, pkgconf_dep],
   include_directories: pkgconf_inc,
   cpp_args: mesonsbom_version)

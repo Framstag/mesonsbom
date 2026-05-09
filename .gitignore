@@ -3,3 +3,4 @@
 /sbom.json
 /.pi
 /.vscode
+/init*.sh
