@@ -1,1 +1,77 @@
+# mise.toml — developer environment for mesonsbom
+# Run `mise install` to set up tools, then `mise run setup` to configure the build.
+
 [tools]
+# Meson requires Python; pin a recent stable minor but allow patch updates.
+python  = "3.12"
+# Meson and Ninja are installed via pip/pipx by mise's python backend,
+# or via their own backends if available. Use ubi/cargo/pip as appropriate.
+# Using "latest" here is intentional: Meson is very stable and the build file
+# uses no exotic features — but pin to a specific version if reproducibility
+# matters across CI/CD environments.
+meson   = "latest"
+ninja   = "latest"
+
+# ────────────────────────────────────────────────────────────────────────────
+[env]
+# Expose the build directory as a convenience variable used in all tasks.
+BUILD_DIR   = "build"
+# Project name mirrors meson.build so tasks can reference it generically.
+PROJECT     = "mesonsbom"
+
+# ────────────────────────────────────────────────────────────────────────────
+[tasks.setup]
+description = "Configure the Meson build directory (run once after cloning)"
+run         = "meson setup $BUILD_DIR"
+
+[tasks.setup-debug]
+description = "Configure build directory with debug optimisation level"
+run         = "meson setup $BUILD_DIR --buildtype=debug"
+
+[tasks.setup-release]
+description = "Configure build directory with release optimisation level"
+run         = "meson setup $BUILD_DIR --buildtype=release"
+
+[tasks.build]
+description = "Compile the project"
+run         = "ninja -C $BUILD_DIR"
+
+[tasks.rebuild]
+description = "Full reconfigure + compile (useful after meson.build changes)"
+run         = ["meson setup --wipe $BUILD_DIR", "ninja -C $BUILD_DIR"]
+
+[tasks.test]
+description = "Run all Catch2 unit and integration tests"
+run         = "meson test -C $BUILD_DIR --print-errorlogs"
+
+[tasks.test-verbose]
+description = "Run tests with verbose TAP output"
+run         = "meson test -C $BUILD_DIR --print-errorlogs --verbose"
+
+[tasks.clean]
+description = "Remove all build artefacts"
+run         = "ninja -C $BUILD_DIR clean"
+
+[tasks.distclean]
+description = "Delete the entire build directory"
+run         = "rm -rf $BUILD_DIR"
+
+[tasks.lint]
+description = "Run clang-tidy over the source tree (requires clang-tidy on PATH)"
+run         = "run-clang-tidy -p $BUILD_DIR src/"
+
+[tasks.format]
+description = "Auto-format all C++ sources with clang-format"
+run         = "find src tests -name '*.cpp' -o -name '*.h' | xargs clang-format -i"
+
+[tasks.sbom-self]
+description = "Generate an SBOM for mesonsbom itself (dog-fooding)"
+run         = "./$BUILD_DIR/$PROJECT --build-dir $BUILD_DIR --output sbom.json"
+
+[tasks.introspect]
+description = "Print Meson dependency introspection for the build directory"
+run         = "meson introspect $BUILD_DIR --dependencies"
+
+[tasks.version]
+description = "Print the project version from meson.build"
+run         = "meson introspect $BUILD_DIR --projectinfo | python3 -c \"import sys,json; print(json.load(sys.stdin)['version'])\""
