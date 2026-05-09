@@ -192,25 +192,144 @@ TEST_CASE("metadata.timestamp is distinct from serialNumber", "[sbom][timestamp]
     REQUIRE(ts.find("urn:uuid:") == std::string::npos);
 }
 
-TEST_CASE("SBOMBuilder setTools and setLicenses", "[sbom]") {
+TEST_CASE("SBOMBuilder addTool and setLicenses", "[sbom]") {
     SBOMBuilder sbom("tool-test", "2.0.0");
 
-    sbom.setTools("mesonsbom", "2.0.0");
+    sbom.addTool({
+        .name = "mesonsbom",
+        .version = "2.0.0",
+        .description = "CycloneDX SBOM generator from Meson build metadata",
+        .supplierName = "Tim Teulings",
+        .homepageUrl = "https://github.com/Framstag/mesonsbom",
+        .vcsUrl = "git+https://github.com/Framstag/mesonsbom.git",
+        .licenses = {"GPL-3.0-or-later"}
+    });
     sbom.setLicenses({"MIT"});
 
     std::ostringstream oss;
     sbom.writeTo(oss);
     nlohmann::json parsed = nlohmann::json::parse(oss.str());
 
-    // Check tools section
+    // Check tools.components section (new CycloneDX 1.5+ format)
     REQUIRE(parsed.contains("metadata"));
     REQUIRE(parsed["metadata"].contains("tools"));
-    REQUIRE(parsed["metadata"]["tools"].is_array());
-    REQUIRE(parsed["metadata"]["tools"][0]["name"] == "mesonsbom");
-    REQUIRE(parsed["metadata"]["tools"][0]["version"] == "2.0.0");
+    REQUIRE(parsed["metadata"]["tools"].is_object());
+    REQUIRE(parsed["metadata"]["tools"].contains("components"));
+    REQUIRE(parsed["metadata"]["tools"]["components"].is_array());
+    REQUIRE(parsed["metadata"]["tools"]["components"][0]["name"] == "mesonsbom");
+    REQUIRE(parsed["metadata"]["tools"]["components"][0]["version"] == "2.0.0");
+    REQUIRE(parsed["metadata"]["tools"]["components"][0]["type"] == "application");
+    REQUIRE(parsed["metadata"]["tools"]["components"][0]["bom-ref"] == "tool-mesonsbom");
 
     // Check license on metadata component
     REQUIRE(parsed["metadata"]["component"].contains("licenses"));
     REQUIRE(parsed["metadata"]["component"]["licenses"].is_array());
     REQUIRE(parsed["metadata"]["component"]["licenses"][0]["license"]["id"] == "MIT");
+}
+
+TEST_CASE("Tool ordering - mesonsbom is always first", "[sbom]") {
+    SBOMBuilder sbom("order-test", "1.0.0");
+
+    // Add mesonsbom first
+    sbom.addTool({
+        .name = "mesonsbom",
+        .version = "1.0.0",
+        .description = "Primary SBOM generator"
+    });
+    // Add another tool second
+    sbom.addTool({
+        .name = "other-tool",
+        .version = "0.5.0",
+        .description = "Secondary tool"
+    });
+
+    std::ostringstream oss;
+    sbom.writeTo(oss);
+    nlohmann::json parsed = nlohmann::json::parse(oss.str());
+
+    REQUIRE(parsed["metadata"]["tools"]["components"].size() == 2);
+    REQUIRE(parsed["metadata"]["tools"]["components"][0]["name"] == "mesonsbom");
+    REQUIRE(parsed["metadata"]["tools"]["components"][1]["name"] == "other-tool");
+}
+
+TEST_CASE("Tool ordering - mesonsbom, meson, backend all present", "[sbom]") {
+    SBOMBuilder sbom("multi-tool-test", "1.0.0");
+
+    // Add mesonsbom first
+    sbom.addTool({
+        .name = "mesonsbom",
+        .version = "1.0.0",
+        .description = "Primary SBOM generator"
+    });
+    // Add meson second
+    sbom.addTool({
+        .name = "meson",
+        .version = "1.11.1",
+        .description = "Build system"
+    });
+    // Add backend third
+    sbom.addTool({
+        .name = "ninja",
+        .version = "unknown",
+        .description = "Build backend"
+    });
+
+    std::ostringstream oss;
+    sbom.writeTo(oss);
+    nlohmann::json parsed = nlohmann::json::parse(oss.str());
+
+    REQUIRE(parsed["metadata"]["tools"]["components"].size() == 3);
+    REQUIRE(parsed["metadata"]["tools"]["components"][0]["name"] == "mesonsbom");
+    REQUIRE(parsed["metadata"]["tools"]["components"][1]["name"] == "meson");
+    REQUIRE(parsed["metadata"]["tools"]["components"][1]["version"] == "1.11.1");
+    REQUIRE(parsed["metadata"]["tools"]["components"][2]["name"] == "ninja");
+    REQUIRE(parsed["metadata"]["tools"]["components"][2]["version"] == "unknown");
+    // Verify correct purl for unknown version
+    REQUIRE(parsed["metadata"]["tools"]["components"][2]["purl"] == "pkg:generic/ninja@unknown");
+    REQUIRE(parsed["metadata"]["tools"]["components"][2]["bom-ref"] == "tool-ninja");
+}
+
+TEST_CASE("Tool component has all required fields", "[sbom]") {
+    SBOMBuilder sbom("fields-test", "1.0.0");
+
+    sbom.addTool({
+        .name = "mesonsbom",
+        .version = "1.1.0",
+        .description = "CycloneDX SBOM generator from Meson build metadata",
+        .supplierName = "Tim Teulings",
+        .homepageUrl = "https://github.com/Framstag/mesonsbom",
+        .vcsUrl = "git+https://github.com/Framstag/mesonsbom.git",
+        .licenses = {"GPL-3.0-or-later"}
+    });
+
+    std::ostringstream oss;
+    sbom.writeTo(oss);
+    nlohmann::json parsed = nlohmann::json::parse(oss.str());
+    const auto& tool = parsed["metadata"]["tools"]["components"][0];
+
+    // Core fields
+    REQUIRE(tool["type"] == "application");
+    REQUIRE(tool["name"] == "mesonsbom");
+    REQUIRE(tool["version"] == "1.1.0");
+    REQUIRE(tool["bom-ref"] == "tool-mesonsbom");
+    REQUIRE(tool["purl"] == "pkg:generic/mesonsbom@1.1.0");
+    REQUIRE(tool["description"] == "CycloneDX SBOM generator from Meson build metadata");
+
+    // Supplier
+    REQUIRE(tool.contains("supplier"));
+    REQUIRE(tool["supplier"]["name"] == "Tim Teulings");
+
+    // Licenses
+    REQUIRE(tool.contains("licenses"));
+    REQUIRE(tool["licenses"].is_array());
+    REQUIRE(tool["licenses"][0]["license"]["id"] == "GPL-3.0-or-later");
+
+    // External references
+    REQUIRE(tool.contains("externalReferences"));
+    REQUIRE(tool["externalReferences"].is_array());
+    REQUIRE(tool["externalReferences"].size() == 2);
+    REQUIRE(tool["externalReferences"][0]["type"] == "website");
+    REQUIRE(tool["externalReferences"][0]["url"] == "https://github.com/Framstag/mesonsbom");
+    REQUIRE(tool["externalReferences"][1]["type"] == "vcs");
+    REQUIRE(tool["externalReferences"][1]["url"] == "git+https://github.com/Framstag/mesonsbom.git");
 }

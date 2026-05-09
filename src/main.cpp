@@ -109,6 +109,41 @@ int main(int argc, char* argv[]) {
     std::string projName = projectInfo.value("name", projectInfo.value("descriptive_name", "unknown"));
     std::string projVersion = projectInfo.value("version", "0.0.0");
 
+    // Read meson-info.json to get the Meson version that built this project.
+    // If missing or corrupt, warn and continue without Meson tool metadata.
+    fs::path mesonInfoPath = fs::path(buildDir) / "meson-info" / "meson-info.json";
+    std::string mesonVersion;
+    try {
+        std::ifstream mesonIn(mesonInfoPath);
+        if (mesonIn) {
+            nlohmann::json mesonInfo;
+            mesonIn >> mesonInfo;
+            mesonVersion = mesonInfo["meson_version"]["full"];
+        } else {
+            std::cerr << "Warning: Could not open " << mesonInfoPath.string() << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Could not parse meson-info.json: " << e.what() << std::endl;
+    }
+
+    // Read intro-buildoptions.json to detect the Meson backend build tool.
+    // If missing or backend is unknown, silently skip - this is a minor enrichment.
+    fs::path optionsPath = fs::path(buildDir) / "meson-info" / "intro-buildoptions.json";
+    std::string backendName;
+    {
+        std::ifstream optIn(optionsPath);
+        if (optIn) {
+            nlohmann::json options;
+            optIn >> options;
+            for (const auto& opt : options) {
+                if (opt.value("name", "") == "backend") {
+                    backendName = opt.value("value", "");
+                    break;
+                }
+            }
+        }
+    }
+
     // When --target is specified, load intro-targets.json and use the target's name
     // as the main component name (Decision 1, Decision 2 from design).
     std::vector<std::string> targetDependencyNames; // empty means no filtering (full project)
@@ -156,8 +191,60 @@ int main(int argc, char* argv[]) {
     SBOMBuilder sbom(projName, projVersion);
     PkgConfigWrapper pkgConf;
 
-    // Populate metadata.tools with mesonsbom identity using embedded version
-    sbom.setTools("mesonsbom", MESONSBOM_VERSION);
+    // Populate metadata.tools.components with mesonsbom identity using embedded version
+    // mesonsbom added first to guarantee it appears first in tools.components array
+    sbom.addTool({
+        .name = "mesonsbom",
+        .version = MESONSBOM_VERSION,
+        .description = "CycloneDX SBOM generator from Meson build metadata",
+        .supplierName = "Tim Teulings",
+        .homepageUrl = "https://github.com/Framstag/mesonsbom",
+        .vcsUrl = "git+https://github.com/Framstag/mesonsbom.git",
+        .licenses = {"GPL-3.0-or-later"}
+    });
+
+    // Add the Meson build system as the second tool entry in tools.components.
+    // Version comes from meson-info.json (read earlier) for the analyzed project.
+    if (!mesonVersion.empty()) {
+        sbom.addTool({
+            .name = "meson",
+            .version = mesonVersion,
+            .description = "Meson is a project to create the best possible "
+                           "next-generation build system",
+            .supplierName = "The Meson Development Team",
+            .homepageUrl = "https://mesonbuild.com",
+            .vcsUrl = "git+https://github.com/mesonbuild/meson.git",
+            .licenses = {"Apache-2.0"}
+        });
+    }
+
+    // Add the Meson backend build tool (e.g., ninja) as the third tool entry.
+    // Detection from intro-buildoptions.json (read earlier).
+    // Version defaults to "unknown" since the build directory does not contain
+    // the actual installed backend version.
+    if (!backendName.empty() && backendName != "none") {
+        ToolInfo backendInfo;
+        backendInfo.name = backendName;
+        backendInfo.version = "unknown";
+
+        if (backendName == "ninja") {
+            backendInfo.description = "Ninja is a small build system with a focus on speed";
+            backendInfo.supplierName = "The Ninja Project";
+            backendInfo.homepageUrl = "https://ninja-build.org";
+            backendInfo.vcsUrl = "git+https://github.com/ninja-build/ninja.git";
+            backendInfo.licenses = {"Apache-2.0"};
+        } else if (backendName.rfind("vs", 0) == 0) {
+            backendInfo.description = "Microsoft Visual Studio build tools";
+            backendInfo.homepageUrl = "https://visualstudio.microsoft.com/";
+            backendInfo.supplierName = "Microsoft Corporation";
+        } else if (backendName == "xcode") {
+            backendInfo.description = "Apple Xcode build system";
+            backendInfo.homepageUrl = "https://developer.apple.com/xcode/";
+            backendInfo.supplierName = "Apple Inc.";
+        }
+
+        sbom.addTool(backendInfo);
+    }
 
     // 3.2: Extract license array from intro-projectinfo.json and pass to setLicenses
     std::vector<std::string> projectLicenses;

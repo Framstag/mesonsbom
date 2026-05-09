@@ -1,4 +1,4 @@
-project('mesonsbom', 'cpp', version : '1.1.0', license : 'GPL-3.0-or-later', default_options : ['cpp_std=c++20'])
+project('mesonsbom', 'cpp', version : '1.2.0', license : 'GPL-3.0-or-later', default_options : ['cpp_std=c++20'])
 
 project_author = 'Tim Teulings'
 

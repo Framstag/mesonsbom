@@ -7,7 +7,7 @@ The system shall generate a CycloneDX 1.6 SBOM in JSON format by reading Meson
 ## Requirements
 
 ### Requirement: SBOM Generation from Meson Build Metadata
-The system SHALL generate a CycloneDX 1.6 SBOM in JSON format by reading Meson introspection JSON files from a specified build directory. Each component in the generated SBOM MUST include a `purl` attribute, a `description` attribute (when available), and the project's license information MUST be extracted into the metadata section. The `metadata.tools` section MUST identify the generating tool using the tool's own embedded version. Dependency edges MUST be consolidated so that each component has a single `dependsOn` array listing all of its dependencies. The top-level `serialNumber` field MUST be present and set to a valid `urn:uuid:<UUIDv4>` value. The `metadata.timestamp` field SHOULD be present and set to an ISO 8601 UTC timestamp (`YYYY-MM-DDTHH:mm:ssZ`) reflecting the moment of BOM construction.
+The system SHALL generate a CycloneDX 1.6 SBOM in JSON format by reading Meson introspection JSON files from a specified build directory. Each component in the generated SBOM MUST include a `purl` attribute, a `description` attribute (when available), and the project's license information MUST be extracted into the metadata section. The `metadata.tools.components` section MUST identify the generating tool using full Component objects with name, version, type, description, supplier, licenses, and external references. Dependency edges MUST be consolidated so that each component has a single `dependsOn` array listing all of its dependencies. The top-level `serialNumber` field MUST be present and set to a valid `urn:uuid:<UUIDv4>` value. The `metadata.timestamp` field SHOULD be present and set to an ISO 8601 UTC timestamp (`YYYY-MM-DDTHH:mm:ssZ`) reflecting the moment of BOM construction.
 
 #### Scenario: Successful SBOM generation with purl and description
 - **WHEN** the user runs `mesonsbom --build-dir /path/to/build`
@@ -22,10 +22,10 @@ The system SHALL generate a CycloneDX 1.6 SBOM in JSON format by reading Meson
 - **AND** there MUST NOT be separate dependency entries for A→B and A→C.
 
 #### Scenario: Tool version shown as mesonsbom's own version
-- **WHEN** the SBOM is generated
-- **THEN** the `metadata.tools` section SHALL contain an entry with the tool name `"mesonsbom"` and the tool's own version string.
-- **AND** the version SHALL be the version defined in the tool's build system, NOT the version of the project being analyzed.
-- **AND** the tool component SHALL be of type `"application"`.
+- **WHEN** an SBOM is generated
+- **THEN** `metadata.tools.components` SHALL contain an entry with the tool name `"mesonsbom"`, the tool's own version string, type `"application"`, a `bom-ref` of `"tool-mesonsbom"`, and a `purl` of `"pkg:generic/mesonsbom@<version>"`
+- **AND** the version SHALL be the version defined in the tool's build system, NOT the version of the project being analyzed
+- **AND** the entry SHALL include `description`, `supplier`, `licenses`, and `externalReferences` as specified in the tool-metadata capability
 
 #### Scenario: Version query via `-v` or `--version`
 - **WHEN** the user runs `mesonsbom --version` or `mesonsbom -v`

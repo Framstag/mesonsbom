@@ -1,10 +1,13 @@
 # Global Rules
 
-## General behaviour
+## General behavior
 
 - Never delete files without explicit confirmation
 - When in doubt, ask before proceeding
-- Comment the code you are changing  / writing. Comment the code with regard to its domain-specific logic and functionality, not its technical implementation
+- Comment the code you are changing  / writing.
+  Comment the code with regard to its domain-specific logic and functionality, not its technical implementation
+- For /opsx:new wird only create directory and proposal.md erstellt.
+  Create additional artefacts only if requested.
 
 ## Code Style and Conventions
 
@@ -13,6 +16,7 @@
 ## Testing
 
 - Use Catch2 for unit test
+- Maek sure that for every feature unit tests exist
 
 ## Calling command line tools
 
@@ -35,7 +39,7 @@
 - Increment the application version in the openspec apply-phase on every change started
 - Make use of semantic versioning
 
-## Dependecy handling
+## Dependency handling
 
 - Try to reduce dependency, where sensefull
 - Update the list of dependencies in the README.md, if dependencies have been change during change execution.

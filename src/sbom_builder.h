@@ -82,6 +82,21 @@ inline std::string makeTimestamp() {
 }
 
 /**
+ * Structured metadata for a tool that contributed to BOM creation.
+ * Used with addTool() to populate metadata.tools.components per CycloneDX 1.5+.
+ */
+struct ToolInfo {
+    std::string name;
+    std::string version;
+    std::string type = "application";
+    std::string description;
+    std::string supplierName;
+    std::string homepageUrl;
+    std::string vcsUrl;
+    std::vector<std::string> licenses; // SPDX license identifiers
+};
+
+/**
  * Simple SBOM builder for CycloneDX 1.6 JSON output.
  * It builds a minimal BOM containing the main application component and any
  * runtime library components with dependency relationships.
@@ -171,12 +186,12 @@ public:
         depMap[fromRef].push_back(toRef);
     }
 
-    // Populate the metadata.tools section with tool identity.
-    void setTools(const std::string& toolName, const std::string& toolVersion) {
-        nlohmann::json tool;
-        tool["name"] = toolName;
-        tool["version"] = toolVersion;
-        bom["metadata"]["tools"] = nlohmann::json::array({tool});
+    // Add a tool entry to metadata.tools.components per CycloneDX 1.5+.
+    // Returns insertion order index (first call = 0, second = 1, ...)
+    // mesonsbom should be added first to guarantee it appears first in output.
+    size_t addTool(const ToolInfo& info) {
+        toolComponents_.push_back(info);
+        return toolComponents_.size() - 1;
     }
 
     // Add license information to metadata.component.licenses.
@@ -208,6 +223,9 @@ public:
         if (!components.empty()) {
             result["components"] = components;
         }
+        // Write tools.components (replaces old flat metadata.tools array)
+        writeTools(result);
+
         // Serialize consolidated dependencies
         if (!depMap.empty()) {
             nlohmann::json depsArray = nlohmann::json::array();
@@ -244,7 +262,56 @@ private:
     std::vector<nlohmann::json> components; // list of component objects
     std::unordered_map<std::string, std::string> nameToRef; // map component name → bom-ref
     std::unordered_set<std::string> visited; // set of components already added to BOM
+    std::vector<ToolInfo> toolComponents_; // ordered list of tool entries
     std::unordered_map<std::string, std::vector<std::string>> depMap; // consolidated dependency map
+
+    // Serialize all tool entries into metadata.tools.components (new CycloneDX 1.5+ format).
+    // Replaces the deprecated flat metadata.tools array entirely.
+    void writeTools(nlohmann::json& target) const {
+        if (toolComponents_.empty()) return;
+        nlohmann::json components = nlohmann::json::array();
+        for (const auto& tool : toolComponents_) {
+            nlohmann::json comp;
+            comp["type"] = tool.type;
+            comp["name"] = tool.name;
+            comp["version"] = tool.version;
+            comp["bom-ref"] = "tool-" + tool.name;
+            comp["purl"] = makePurl(tool.name, tool.version);
+            if (!tool.description.empty()) {
+                comp["description"] = tool.description;
+            }
+            if (!tool.supplierName.empty()) {
+                comp["supplier"]["name"] = tool.supplierName;
+            }
+            if (!tool.licenses.empty()) {
+                nlohmann::json licArray = nlohmann::json::array();
+                for (const auto& lic : tool.licenses) {
+                    nlohmann::json licObj;
+                    licObj["license"]["id"] = lic;
+                    licArray.push_back(licObj);
+                }
+                comp["licenses"] = licArray;
+            }
+            if (!tool.homepageUrl.empty() || !tool.vcsUrl.empty()) {
+                nlohmann::json refs = nlohmann::json::array();
+                if (!tool.homepageUrl.empty()) {
+                    nlohmann::json ref;
+                    ref["type"] = "website";
+                    ref["url"] = tool.homepageUrl;
+                    refs.push_back(ref);
+                }
+                if (!tool.vcsUrl.empty()) {
+                    nlohmann::json ref;
+                    ref["type"] = "vcs";
+                    ref["url"] = tool.vcsUrl;
+                    refs.push_back(ref);
+                }
+                comp["externalReferences"] = refs;
+            }
+            components.push_back(comp);
+        }
+        target["metadata"]["tools"]["components"] = components;
+    }
 
     // Generate a purl using the pkg:generic format.
     // Format: pkg:generic/<lowercase-name>@<version>

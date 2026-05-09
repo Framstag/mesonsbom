@@ -61,11 +61,13 @@ TEST_CASE("Integration: generate SBOM from this project's build directory", "[in
         REQUIRE(dep["dependsOn"].is_array());
     }
 
-    // Verify metadata.tools section contains mesonsbom
+    // Verify metadata.tools.components section contains mesonsbom (CycloneDX 1.5+)
     if (sbom["metadata"].contains("tools")) {
         const auto& tools = sbom["metadata"]["tools"];
-        REQUIRE(tools.is_array());
-        REQUIRE(tools[0]["name"] == "mesonsbom");
+        REQUIRE(tools.is_object());
+        REQUIRE(tools.contains("components"));
+        REQUIRE(tools["components"].is_array());
+        REQUIRE(tools["components"][0]["name"] == "mesonsbom");
     }
 
     // Verify the first component (application) has a bom-ref that matches its name.

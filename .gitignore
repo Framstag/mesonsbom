@@ -1,3 +1,5 @@
 /.idea
 /debug
 /sbom.json
+/.pi
+/.vscode
